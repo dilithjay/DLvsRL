@@ -25,10 +25,20 @@ ser = Serial('COM5', 9600)
 
 def create_q_model():
     # Network defined by the Deepmind paper
-    inputs = layers.Input(shape=(3))
-    layer1 = layers.Dense(16, activation="relu")(inputs)
-    layer2 = layers.Dense(16, activation="relu")(layer1)
-    action = layers.Dense(num_actions, activation="linear")(layer2)
+    inputs = layers.Input(shape=(80, 96, 1))
+
+    # Convolutions on the frames on the screen
+    layer1 = layers.Conv2D(64, 8, strides=4, activation="relu")(inputs)
+    layer2 = layers.MaxPooling2D(2, 2)(layer1)
+    layer3 = layers.Conv2D(128, 3, strides=1, activation="relu")(layer2)
+    #layer4 = layers.MaxPooling2D(2, 2)(layer3)
+    layer5 = layers.Conv2D(128, 3, strides=1, activation="relu")(layer3)
+    #layer6 = layers.MaxPooling2D(2, 2)(layer5)
+    
+    layer7 = layers.Flatten()(layer5)
+
+    layer8 = layers.Dense(512, activation="relu")(layer7)
+    action = layers.Dense(num_actions, activation="linear")(layer8)
 
     return keras.Model(inputs=inputs, outputs=action)
 
@@ -78,6 +88,7 @@ try:
 except:
     print('Weights not found')
 """
+
 while True:  # Run until solved
     ###########################################################################
     """if input('Stop training?(y/n) ') == 'y':
@@ -89,12 +100,12 @@ while True:  # Run until solved
     ser.write('0'.encode())
     time.sleep(2)
     
-    ret, img = vc.read()
-    img = cv2.resize(img[img.shape[0]//2:, :, :], (100, 50))
-    """cv2.imshow('...', img)
-    if cv2.waitKey(10) == 27:   # exit if Escape is hit
-        break"""
-    state = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).reshape((1, 100, 50, 1))/255
+    # h=480, w=640
+    ret, img1 = vc.read()
+    ret, img2 = vc.read()
+    img1 = cv2.resize(cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)[240:, 120:520], (80, 48))/255
+    img2 = cv2.resize(cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)[240:, 120:520], (80, 48))/255
+    state = np.concatenate((img1, img2)).reshape((1, 80, 96, 1))
     ###########################################################################
     
     # state = np.array(env.reset())
@@ -116,7 +127,7 @@ while True:  # Run until solved
         else:
             # Predict action Q-values
             # From environment state
-            state_tensor = state.reshape((100, 50, 1))
+            state_tensor = state.reshape((80, 96, 1))
             state_tensor = tf.convert_to_tensor(state_tensor)
             state_tensor = tf.expand_dims(state_tensor, 0)
             action_probs = model(state_tensor, training=False)
@@ -129,25 +140,17 @@ while True:  # Run until solved
         epsilon = max(epsilon, epsilon_min)
         
         ###########################################################################
-        # Apply the sampled action in our environment
-        # angle = 45
         angles = [30, 90, 150]
-        """if action == 1:
-            cur_servo_pos = min(cur_servo_pos + angle, 180)
-            ser.write(str(cur_servo_pos).encode())
-            print('Action taken:', min(cur_servo_pos + angle, 180))
-        elif action == 2:
-            cur_servo_pos = max(cur_servo_pos - angle, 0)
-            ser.write(str(cur_servo_pos).encode())
-            print('Action taken:', max(cur_servo_pos - angle, 0))"""
         cur_servo_pos = angles[action]
         ser.write(str(cur_servo_pos).encode())
         print("Action taken:", cur_servo_pos)
         time.sleep(1.2)
         
-        ret, img = vc.read()
-        img = cv2.resize(img[img.shape[0]//2:, :, :], (100, 50))
-        state_next = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).reshape((1, 100, 50, 1))/255
+        ret, img1 = vc.read()
+        ret, img2 = vc.read()
+        img1 = cv2.resize(cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)[240:, 120:520], (80, 48))/255
+        img2 = cv2.resize(cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)[240:, 120:520], (80, 48))/255
+        state_next = np.concatenate((img1, img2)).reshape((1, 80, 96, 1))
         reward = 0
         done = 0
         
@@ -194,7 +197,7 @@ while True:  # Run until solved
             # Build the updated Q-values for the sampled future states
             # Use the target model for stability
             print('Predicting from target model')
-            future_rewards = model_target.predict(state_next_sample.reshape((batch_size, 100, 50)))
+            future_rewards = model_target.predict(state_next_sample.reshape((batch_size, 80, 96)))
             # Q value = reward + discount factor * expected future reward
             updated_q_values = rewards_sample + gamma * tf.reduce_max(
                 future_rewards, axis=1
@@ -208,7 +211,7 @@ while True:  # Run until solved
 
             with tf.GradientTape() as tape:
                 # Train the model on the states and updated Q-values
-                q_values = model(state_sample.reshape((batch_size, 100, 50)))
+                q_values = model(state_sample.reshape((batch_size, 80, 96)))
 
                 # Apply the masks to the Q-values to get the Q-value for action taken
                 q_action = tf.reduce_sum(tf.multiply(q_values, masks), axis=1)
@@ -233,7 +236,7 @@ while True:  # Run until solved
             del state_next_history[:1]
             del action_history[:1]
             del done_history[:1]
-                    
+
         if done:
             break
     print("epsilon:", epsilon)
