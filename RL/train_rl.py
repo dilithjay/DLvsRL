@@ -81,13 +81,13 @@ update_target_network = 10000
 loss_function = keras.losses.Huber()
 
 vc = cv2.VideoCapture(0)
-"""
+
 try:
     print("Loading model...")
-    model.load_weights('model_rl.h5')
+    model.load_weights('model_rl_0.h5')
 except:
     print('Weights not found')
-"""
+
 
 while True:  # Run until solved
     ###########################################################################
