@@ -72,7 +72,7 @@ model.compile(loss = 'categorical_crossentropy', optimizer='adam', metrics=['acc
 history = model.fit(train_generator, epochs=50, validation_data = validation_generator, verbose = 1)
 
 # serialize weights to HDF5
-model.save_weights("model.h5")
+model.save_weights("model_0.h5")
 print("Saved model to disk")
 
 import matplotlib.pyplot as plt
