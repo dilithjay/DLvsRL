@@ -1,6 +1,5 @@
 import io
 import os
-import scipy.misc
 import numpy as np
 import six
 import time
@@ -44,7 +43,7 @@ output_directory = "inference_graph"
 category_index = label_map_util.create_category_index_from_labelmap(labelmap_path, use_display_name=True)
 
 tf.keras.backend.clear_session()
-model = tf.saved_model.load(f'{output_directory}/saved_model')
+model = tf.saved_model.load('inference_graph/saved_model')
 
 def run_inference_for_single_image(model, image):
   image = np.asarray(image)
@@ -85,8 +84,8 @@ from serial import Serial
 import time
 from scipy import stats
 
-cap = cv2.VideoCapture(0) # or cap = cv2.VideoCapture("<video-path>")
-ser = Serial('COM5', 9600)
+vc = cv2.VideoCapture(0) # or cap = cv2.VideoCapture("<video-path>")
+# ser = Serial('COM5', 9600)
 
 def run_inference(model, cap):
     t = time.time()
@@ -106,7 +105,7 @@ def run_inference(model, cap):
         min_score_thresh=.9,
         line_thickness=5)
     index = np.argmax(output_dict['detection_scores'])
-    print('inference took:', time.time() - t, "seconds")
+    # print('inference took:', time.time() - t, "seconds")
     if output_dict['detection_scores'][index] > 0.9:
         box = output_dict['detection_boxes'][index]
         center = (box[1] + box[3])/2
@@ -117,49 +116,49 @@ def run_inference(model, cap):
 
 use_model = 'u' in input("Use model (u) or collect data (d): ").lower()
 model_1 = tf.keras.models.Sequential([
-    tf.keras.layers.Dense(8, activation='relu', input_shape=[3]),
-    tf.keras.layers.Dense(8, activation='relu'),
+    tf.keras.layers.Dense(64, activation='relu', input_shape=[3]),
+    tf.keras.layers.Dense(64, activation='relu'),
     tf.keras.layers.Dense(1)
 ])
 model_1.load_weights('model.h5')
-while cap.isOpened():
+while vc.isOpened():
     print("=========================================")
     centers = []
     count = 0
-    while len(centers) < 5:
-        center, h, img = run_inference(model, cap)
-        
+    centers = []
+    h = 0
+    count = 0
+    while h < 0.8 or len(centers) < 5:
+        center, h, img = run_inference(model, vc)
+        print("center:",center, "h:", h)
         if center:
-            print(len(centers), "center:", center, "height:", h)
-            count = 0
             centers.append(center)
-            cv2.imshow('object_detection', img)
         else:
-            print("center:",center)
+            h = 0
             count += 1
             if count > 2 and len(centers) != 0:
                 count = 0
-                print("Resetting centers")
+                print("Resetting state")
                 centers = []
-    
-    
+    if input("Skip? ") == 'y':
+        continue
+    n = len(centers)
     if use_model:
-        center = model_1.predict([centers[-3:]])[0][0]
+        mid = n // 2
+        center = model_1.predict([[centers[mid - 2], centers[mid], centers[mid + 2]]])[0][0]
     else:
-        print("Writing data to file")
-        with open("data.txt", "a+") as data:
-            data.write(" ".join(list(map(str,centers[:3]))) + " " + str(centers[-1]) + "\n")
-        center = centers[-1]  #sum(centers)/len(centers)
+        for i in range(n - 4):
+            data = " ".join(list(map(str, [centers[i], centers[i + 2], centers[i + 4], centers[-1]])))
+            print("Writing data to file")
+            with open("data.txt", "a+") as f:
+                f.write(data + "\n")
+        center = centers[-1]
     print("center", center)
-    print("blaaaaaaaaaaaa",(7/18 < center < 11/18) * 1 + (center <= 7/18) * 2)
-    cur_servo_pos = [30, 90, 150][(7/18 < center < 11/18) * 1 + (center <= 7/18) * 2]
     cur_servo_pos = (1 - center) * 180
-    ser.write(str(int(cur_servo_pos)).encode())
-    print("Action taken:", cur_servo_pos)
+    print("Servo Rotation:", cur_servo_pos)
     
-    time.sleep(1)
-    
+    """
     if cv2.waitKey(25) & 0xFF == ord('q'):
         cap.release()
         cv2.destroyAllWindows()
-        break
+        break"""
